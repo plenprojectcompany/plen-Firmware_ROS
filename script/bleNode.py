@@ -3,32 +3,31 @@
 import subprocess
 import time
 
-ps = subprocess.Popen(['ps', 'aux'], stdout=subprocess.PIPE,)
-grep = subprocess.Popen(['grep', 'bluetooth'], stdin=ps.stdout, stdout=subprocess.PIPE,)
+ps = subprocess.Popen(['ps', ''], stdout = subprocess.PIPE, )
+grep = subprocess.Popen(['grep', 'bluetooth'], stdin = ps.stdout, stdout = subprocess.PIPE, )
 end_of_pipe = grep.stdout
 
-moji_2 = []
-result = []
+ps_bluetooth = []
 detect = 0
 for line in end_of_pipe:
     if line.find('bluetoothd') != -1:
-        moji_2 = line.split(' ')
-        detect=1
+        ps_bluetooth = line.split(' ')
+        detect = 1
 
-val2 = 0
-print moji_2
+blank_num = 0
+print ps_bluetooth
 if detect == 1:
-    for val in range(0,len(moji_2)):
-        if moji_2[val-val2] == "":
-            moji_2.pop(val-val2)
-            val2=val2+1
-    print moji_2
-    kill = subprocess.Popen(['kill',moji_2[1]], stdout=subprocess.PIPE,)
+    for index in range(0, len(ps_bluetooth)):
+        if ps_bluetooth[index - blank_num] == "":
+            ps_bluetooth.pop(index - blank_num)
+            blank_num = blank_num + 1
+    print ps_bluetooth
+    kill = subprocess.Popen(['kill', ps_bluetooth[0]], stdout = subprocess.PIPE, )
     end_of_pipe = kill.stdout
     detect = 0
 
 time.sleep(1.0)
-bluetoothd = subprocess.Popen(['bluetoothd','-nE'], stdout=subprocess.PIPE,)
+bluetoothd = subprocess.Popen(['bluetoothd', '-nE'], stdout = subprocess.PIPE,)
 end_of_pipe = bluetoothd.stdout
 time.sleep(1.0)
 
@@ -45,7 +44,7 @@ from random import randint
 import rospy
 from std_msgs.msg import String
 
-rospy.init_node('bleNode', anonymous=True)
+rospy.init_node('bleNode', anonymous = True)
 pub = rospy.Publisher('BleToControl', String, queue_size = 10)
 
 mainloop = None
