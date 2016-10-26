@@ -44,13 +44,12 @@ def publish_control(message):
         send.data = ",".join(tmp[1:3])
         send_message_to_i2cNode(send)
     elif tmp[0] == "data":
+        global accelgyro
         if tmp[1] == "w":
             for val in range(0,6):
-                global accelgyro
                 accelgyro[val] = tmp[val+1]
         elif tmp[1] == "r":
             send.data = "data"
-            global accelgyro
             for num in range(0,len(accelgyro)):
                 send.data += ','+accelgyro[num]
             send_message_to_serialNode(send)
