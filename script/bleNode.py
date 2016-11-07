@@ -39,11 +39,12 @@ import dbus.service
 import array
 import gobject
 
-from random import randint
+#from random import randint
 
 import rospy
 from std_msgs.msg import String
 
+# register BLE node to ROS
 rospy.init_node('bleNode', anonymous = True)
 pub = rospy.Publisher('BleToControl', String, queue_size = 10)
 
@@ -77,6 +78,7 @@ class Common(dbus.service.Object):
     def __init__(self, path, bus, uuid):
         self.path = path
         self.uuid = uuid
+        self.childs = []
         dbus.service.Object.__init__(self, bus, self.path)
 
     def get_path(self):
@@ -90,8 +92,8 @@ class Common(dbus.service.Object):
 
     def get_child_paths(self):
         result = []
-        for chrc in self.characteristics:
-            result.append(chrc.get_path())
+        for child in self.childs:
+            result.append(child.get_path())
         return result
 
     def get_childs(self):
@@ -108,7 +110,6 @@ class Service(Common):
 
     def __init__(self, bus, index, uuid, primary):
         self.primary = primary
-        self.characteristics = []
         Common.__init__(self, self.PATH_BASE + str(index), bus, uuid)
 
     def get_properties(self):
@@ -146,13 +147,11 @@ class Service(Common):
 
 class Characteristic(Common):
     def __init__(self, bus, index, uuid, flags, service_path):
-        #self.service = service
         self.flags = flags
-        self.descriptors = []
         Common.__init__(self, service_path + '/char' + str(index), bus, uuid)
 
     def get_properties(self):
-        splited_path = paself.path.split("/char")
+        splited_path = self.path.split('/char')
         return {
             GATT_CHRC_IFACE: {
                 'Service': splited_path[0],
@@ -199,10 +198,10 @@ class Characteristic(Common):
 class Descriptor(Common):
     def __init__(self, bus, index, uuid, flags, characteristic_path):
         self.flags = flags
-        common.__init__(self, characteristic_path + '/desc' + str(index), bus, uuid)
+        Common.__init__(self, characteristic_path + '/desc' + str(index), bus, uuid)
 
     def get_properties(self):
-        splited_path = self.path.split("/desc")
+        splited_path = self.path.split('/desc')
         return {
             GATT_DESC_IFACE: {
                 'Characteristic': splited_path[0],
@@ -237,7 +236,6 @@ class TestService(Service):
         Service.__init__(self, bus, index, self.TEST_SVC_UUID, True)
         self.add_child(TestCharacteristic(bus, 1, self.path, self.CH_UUID2,0,1,['read']))
         self.add_child(TestCharacteristic(bus, 2, self.path, self.CH_UUID,0,1,['read', 'write','writable-auxiliaries']))
-        self.add_child(TestCharacteristic(bus, 3, self.path, self.CH_UUIDd,0,1,['read', 'write']))
 
 class TestCharacteristic(Characteristic):
 
