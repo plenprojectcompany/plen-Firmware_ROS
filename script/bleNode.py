@@ -3,31 +3,10 @@
 import subprocess
 import time
 
-ps = subprocess.Popen(['ps', ''], stdout = subprocess.PIPE, )
-grep = subprocess.Popen(['grep', 'bluetooth'], stdin = ps.stdout, stdout = subprocess.PIPE, )
-end_of_pipe = grep.stdout
-
-ps_bluetooth = []
-detect = 0
-for line in end_of_pipe:
-    if line.find('bluetoothd') != -1:
-        ps_bluetooth = line.split(' ')
-        detect = 1
-
-blank_num = 0
-print ps_bluetooth
-if detect == 1:
-    for index in range(0, len(ps_bluetooth)):
-        if ps_bluetooth[index - blank_num] == "":
-            ps_bluetooth.pop(index - blank_num)
-            blank_num = blank_num + 1
-    print ps_bluetooth
-    kill = subprocess.Popen(['kill', ps_bluetooth[0]], stdout = subprocess.PIPE, )
-    end_of_pipe = kill.stdout
-    detect = 0
-
+# restart bluetoothd
+killall = subprocess.Popen(['killall', 'bluetoothd'], stdout = subprocess.PIPE, )
 time.sleep(1.0)
-bluetoothd = subprocess.Popen(['bluetoothd', '-nE'], stdout = subprocess.PIPE,)
+bluetoothd = subprocess.Popen(['bluetoothd', '-nE'], stdout = subprocess.PIPE, )
 end_of_pipe = bluetoothd.stdout
 time.sleep(1.0)
 
@@ -113,12 +92,13 @@ class Service(Common):
         Common.__init__(self, self.PATH_BASE + str(index), bus, uuid)
 
     def get_properties(self):
+        child_paths = self.get_child_paths()
         return {
             GATT_SERVICE_IFACE: {
                 'UUID': self.uuid,
                 'Primary': self.primary,
                 'Characteristics': dbus.Array(
-                    self.get_child_paths(),
+                    child_paths,
                     signature='o')
             }
         }
@@ -152,13 +132,14 @@ class Characteristic(Common):
 
     def get_properties(self):
         splited_path = self.path.split('/char')
+        child_paths = self.get_child_paths
         return {
             GATT_CHRC_IFACE: {
                 'Service': splited_path[0],
                 'UUID': self.uuid,
                 'Flags': self.flags,
                 'Descriptors': dbus.Array(
-                    self.get_child_paths(),
+                    child_paths,
                     signature='o')
             }
         }
