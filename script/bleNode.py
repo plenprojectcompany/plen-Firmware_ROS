@@ -230,7 +230,7 @@ class TestCharacteristic(Characteristic):
         if flag == 1:
                 self.add_child(TestDescriptor(bus, 0, self.path))
         if flag2 == 1:
-                self.add_child(CharacteristicUserDescriptionDescriptor(bus, 1, self.path))
+                self.add_child(CharacteristicUserDescriptionDescriptor(bus, 1, self))
 
     def ReadValue(self):
         print('TestCharacteristic Read: ' + repr(self.value))
