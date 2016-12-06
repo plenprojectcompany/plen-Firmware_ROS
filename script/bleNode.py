@@ -3,30 +3,10 @@
 import subprocess
 import time
 
-ps = subprocess.Popen(['ps', 'aux'], stdout=subprocess.PIPE,)
-grep = subprocess.Popen(['grep', 'bluetooth'], stdin=ps.stdout, stdout=subprocess.PIPE,)
-end_of_pipe = grep.stdout
-
-moji_2 = []
-result = []
-detect = 0
-for line in end_of_pipe:
-        if line.find('bluetoothd') != -1:
-                moji_2 = line.split(' ')
-                detect=1
-val2 = 0
-print moji_2
-if detect == 1:
-        for val in range(0,len(moji_2)):
-                if moji_2[val-val2] == "":
-                        moji_2.pop(val-val2)
-                        val2=val2+1
-        print moji_2
-        kill = subprocess.Popen(['kill',moji_2[1]], stdout=subprocess.PIPE,)
-        end_of_pipe = kill.stdout
-        detect = 0
+# restart bluetoothd
+killall = subprocess.Popen(['killall', 'bluetoothd'], stdout = subprocess.PIPE, )
 time.sleep(1.0)
-bluetoothd = subprocess.Popen(['bluetoothd','-nE'], stdout=subprocess.PIPE,)
+bluetoothd = subprocess.Popen(['bluetoothd', '-nE'], stdout = subprocess.PIPE, )
 end_of_pipe = bluetoothd.stdout
 time.sleep(1.0)
 
@@ -38,12 +18,13 @@ import dbus.service
 import array
 import gobject
 
-from random import randint
+#from random import randint
 
 import rospy
 from std_msgs.msg import String
 
-rospy.init_node('bleNode', anonymous=True)
+# register BLE node to ROS
+rospy.init_node('bleNode', anonymous = True)
 pub = rospy.Publisher('BleToControl', String, queue_size = 10)
 
 mainloop = None
@@ -72,47 +53,56 @@ class InvalidValueLengthException(dbus.exceptions.DBusException):
 class FailedException(dbus.exceptions.DBusException):
     _dbus_error_name = 'org.bluez.Error.Failed'
 
-
-class Service(dbus.service.Object):
-    PATH_BASE = '/org/bluez/example/service'
-
-    def __init__(self, bus, index, uuid, primary):
-        self.path = self.PATH_BASE + str(index)
-        self.bus = bus
+class Common(dbus.service.Object):
+    def __init__(self, path, bus, uuid):
+        self.path = path
         self.uuid = uuid
-        self.primary = primary
-        self.characteristics = []
+        self.childs = []
         dbus.service.Object.__init__(self, bus, self.path)
-
-    def get_properties(self):
-        return {
-                GATT_SERVICE_IFACE: {
-                        'UUID': self.uuid,
-                        'Primary': self.primary,
-                        'Characteristics': dbus.Array(
-                                self.get_characteristic_paths(),
-                                signature='o')
-                }
-        }
 
     def get_path(self):
         return dbus.ObjectPath(self.path)
 
-    def add_characteristic(self, characteristic):
-        self.characteristics.append(characteristic)
+    def get_properties(self):
+        pass
 
-    def get_characteristic_paths(self):
+    def add_child(self, child):
+        self.childs.append(child)
+
+    def get_child_paths(self):
         result = []
-        for chrc in self.characteristics:
-            result.append(chrc.get_path())
+        for child in self.childs:
+            result.append(child.get_path())
         return result
 
-    def get_characteristics(self):
-        return self.characteristics
+    def get_childs(self):
+        return self.childs
 
     @dbus.service.method(DBUS_PROP_IFACE,
                          in_signature='s',
                          out_signature='a{sv}')
+    def GetAll(self, interface):
+        pass
+
+class Service(Common):
+    PATH_BASE = '/org/bluez/example/service'
+
+    def __init__(self, bus, index, uuid, primary):
+        self.primary = primary
+        Common.__init__(self, self.PATH_BASE + str(index), bus, uuid)
+
+    def get_properties(self):
+        child_paths = self.get_child_paths()
+        return {
+            GATT_SERVICE_IFACE: {
+                'UUID': self.uuid,
+                'Primary': self.primary,
+                'Characteristics': dbus.Array(
+                    child_paths,
+                    signature='o')
+            }
+        }
+
     def GetAll(self, interface):
         if interface != GATT_SERVICE_IFACE:
             raise InvalidArgsException()
@@ -125,56 +115,35 @@ class Service(dbus.service.Object):
         print('GetManagedObjects')
 
         response[self.get_path()] = self.get_properties()
-        chrcs = self.get_characteristics()
-        for chrc in chrcs:
-            response[chrc.get_path()] = chrc.get_properties()
-            descs = chrc.get_descriptors()
-            for desc in descs:
-                response[desc.get_path()] = desc.get_properties()
+        characteristics = self.get_childs()
+        for characteristic in characteristics:
+            response[characteristic.get_path()] = characteristic.get_properties()
+            descriptors = characteristic.get_childs()
+            for descriptor in descriptors:
+                response[descriptor.get_path()] = descriptor.get_properties()
 
         return response
 
 
-class Characteristic(dbus.service.Object):
-    def __init__(self, bus, index, uuid, flags, service):
-        self.path = service.path + '/char' + str(index)
-        self.bus = bus
-        self.uuid = uuid
-        self.service = service
+class Characteristic(Common):
+    def __init__(self, bus, index, uuid, flags, service_path):
         self.flags = flags
-        self.descriptors = []
-        dbus.service.Object.__init__(self, bus, self.path)
+        Common.__init__(self, service_path + '/char' + str(index), bus, uuid)
 
     def get_properties(self):
+        splited_path = self.path.split('/char')
+        child_paths = self.get_child_paths
         return {
-                GATT_CHRC_IFACE: {
-                        'Service': self.service.get_path(),
-                        'UUID': self.uuid,
-                        'Flags': self.flags,
-                        'Descriptors': dbus.Array(
-                                self.get_descriptor_paths(),
-                                signature='o')
-                }
+            GATT_CHRC_IFACE: {
+                'Service': splited_path[0],
+                'UUID': self.uuid,
+                'Flags': self.flags,
+                'Descriptors': dbus.Array(
+                    child_paths,
+                    signature='o')
+            }
         }
 
-    def get_path(self):
-        return dbus.ObjectPath(self.path)
-
-    def add_descriptor(self, descriptor):
-        self.descriptors.append(descriptor)
-
-    def get_descriptor_paths(self):
-        result = []
-        for desc in self.descriptors:
-            result.append(desc.get_path())
-        return result
-
-    def get_descriptors(self):
-        return self.descriptors
-
-    @dbus.service.method(DBUS_PROP_IFACE,
-                         in_signature='s',
-                         out_signature='a{sv}')
     def GetAll(self, interface):
         if interface != GATT_CHRC_IFACE:
             raise InvalidArgsException()
@@ -207,30 +176,21 @@ class Characteristic(dbus.service.Object):
         pass
 
 
-class Descriptor(dbus.service.Object):
-    def __init__(self, bus, index, uuid, flags, characteristic):
-        self.path = characteristic.path + '/desc' + str(index)
-        self.bus = bus
-        self.uuid = uuid
+class Descriptor(Common):
+    def __init__(self, bus, index, uuid, flags, characteristic_path):
         self.flags = flags
-        self.chrc = characteristic
-        dbus.service.Object.__init__(self, bus, self.path)
+        Common.__init__(self, characteristic_path + '/desc' + str(index), bus, uuid)
 
     def get_properties(self):
+        splited_path = self.path.split('/desc')
         return {
-                GATT_DESC_IFACE: {
-                        'Characteristic': self.chrc.get_path(),
-                        'UUID': self.uuid,
-                        'Flags': self.flags,
-                }
+            GATT_DESC_IFACE: {
+                'Characteristic': splited_path[0],
+                'UUID': self.uuid,
+                'Flags': self.flags,
+            }
         }
 
-    def get_path(self):
-        return dbus.ObjectPath(self.path)
-
-    @dbus.service.method(DBUS_PROP_IFACE,
-                         in_signature='s',
-                         out_signature='a{sv}')
     def GetAll(self, interface):
         if interface != GATT_DESC_IFACE:
             raise InvalidArgsException()
@@ -255,35 +215,34 @@ class TestService(Service):
 
     def __init__(self, bus, index):
         Service.__init__(self, bus, index, self.TEST_SVC_UUID, True)
-        self.add_characteristic(TestCharacteristic(bus, 1, self, self.CH_UUID2,0,1,['read']))
-        self.add_characteristic(TestCharacteristic(bus, 2, self, self.CH_UUID,0,1,['read', 'write','writable-auxiliaries']))
-        self.add_characteristic(TestCharacteristic(bus, 3, self, self.CH_UUIDd,0,1,['read', 'write']))
+        self.add_child(TestCharacteristic(bus, 1, self.path, self.CH_UUID2,0,1,['read']))
+        self.add_child(TestCharacteristic(bus, 2, self.path, self.CH_UUID,0,1,['read', 'write','writable-auxiliaries']))
 
 class TestCharacteristic(Characteristic):
 
-    def __init__(self, bus, index, service,TEST_CHRC_UUID,flag,flag2,p):
+    def __init__(self, bus, index, service_path,TEST_CHRC_UUID,flag,flag2,p):
         Characteristic.__init__(
                 self, bus, index,
                 TEST_CHRC_UUID,
                 p,
-                service)
+                service_path)
         self.value = []
         if flag == 1:
-                self.add_descriptor(TestDescriptor(bus, 0, self))
+                self.add_child(TestDescriptor(bus, 0, self.path))
         if flag2 == 1:
-                self.add_descriptor(CharacteristicUserDescriptionDescriptor(bus, 1, self))
+                self.add_child(CharacteristicUserDescriptionDescriptor(bus, 1, self))
 
     def ReadValue(self):
         print('TestCharacteristic Read: ' + repr(self.value))
         print('TestCharacteristic Read value: ' + str(self.value))
         return self.value
 
-    def WriteValue(self, value):        
+    def WriteValue(self, value):
         self.value = value
         s = "".join(chr(b) for b in value)
         print s
         rospy.loginfo("controlNode %s", s)
-        
+
         if ('#' in s or '$' in s or '<' in s or '>' in s):
             LEDon = String()
             LEDon.data = "gpio,w,act"
@@ -298,12 +257,12 @@ class TestCharacteristic(Characteristic):
 
 class TestDescriptor(Descriptor):
 
-    def __init__(self, bus, index, characteristic):
+    def __init__(self, bus, index, characteristic_path):
         Descriptor.__init__(
                 self, bus, index,
                 self.TEST_DESC_UUID,
                 ['read', 'write'],
-                characteristic)
+                characteristic_path)
 
     def ReadValue(self):
         return [
@@ -322,7 +281,7 @@ class CharacteristicUserDescriptionDescriptor(Descriptor):
                 self, bus, index,
                 self.CUD_UUID,
                 ['read', 'write'],
-                characteristic)
+                characteristic.path)
 
     def ReadValue(self):
         return self.value
@@ -333,31 +292,31 @@ class CharacteristicUserDescriptionDescriptor(Descriptor):
         self.value = value
 
 def property_changed(interface, changed, invalidated, path):
-        iface = interface[interface.rfind(".") + 1:]
-        for name, value in changed.iteritems():
-                val = str(value)
-                if name == 'Connected':
-                        if val == "1":
-                                print("ON")
-                                message = String()
-                                message.data = "gpio,w,on"
-                                send(message)
-                        elif val == "0":
-                                print("OFF")
-                                message = String()
-                                message.data = "gpio,w,off"
-                                send(message)
-                                advertise()
+    iface = interface[interface.rfind(".") + 1:]
+    for name, value in changed.iteritems():
+        val = str(value)
+        if name == 'Connected':
+            if val == "1":
+                print("ON")
+                message = String()
+                message.data = "gpio,w,on"
+                send(message)
+            elif val == "0":
+                print("OFF")
+                message = String()
+                message.data = "gpio,w,off"
+                send(message)
+                advertise()
 
-                        else:
-                                pass
-                elif name == 'Alias' or name == 'Name':
-                    print("ON")
-                    message = String()
-                    message.data = "gpio,w,on"
-                    send(message)
-                else:
-                        pass
+            else:
+                pass
+        elif name == 'Alias' or name == 'Name':
+            print("ON")
+            message = String()
+            message.data = "gpio,w,on"
+            send(message)
+        else:
+            pass
 
 def register_service_cb():
     print('GATT service registered')
