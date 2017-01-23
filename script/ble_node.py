@@ -1,34 +1,6 @@
 #!/usr/bin/env python
 
 import subprocess
-import time
-
-ps = subprocess.Popen(['ps', 'aux'], stdout=subprocess.PIPE,)
-grep = subprocess.Popen(['grep', 'bluetooth'], stdin=ps.stdout, stdout=subprocess.PIPE,)
-end_of_pipe = grep.stdout
-
-moji_2 = []
-result = []
-detect = 0
-for line in end_of_pipe:
-        if line.find('bluetoothd') != -1:
-                moji_2 = line.split(' ')
-                detect=1
-val2 = 0
-print moji_2
-if detect == 1:
-        for val in range(0,len(moji_2)):
-                if moji_2[val-val2] == "":
-                        moji_2.pop(val-val2)
-                        val2=val2+1
-        print moji_2
-        kill = subprocess.Popen(['kill',moji_2[1]], stdout=subprocess.PIPE,)
-        end_of_pipe = kill.stdout
-        detect = 0
-time.sleep(1.0)
-bluetoothd = subprocess.Popen(['bluetoothd','-nE'], stdout=subprocess.PIPE,)
-end_of_pipe = bluetoothd.stdout
-time.sleep(1.0)
 
 import dbus
 import dbus.exceptions
@@ -38,36 +10,44 @@ import dbus.service
 import array
 import gobject
 
-from random import randint
-
 import rospy
 from std_msgs.msg import String
+from plen_msgs.msg import Eyes
 
-rospy.init_node('bleNode', anonymous=True)
-pub = rospy.Publisher('BleToControl', String, queue_size = 10)
+# register BLE node to ROS
+rospy.init_node('ble_node', anonymous=True)
+
+# register publisher wanted to publish message of BLE
+eyes_topic = rospy.Publisher('instruction_to_eyes', Eyes, queue_size=10)
+rs485 = rospy.Publisher('to_rs485', String, queue_size=10)
 
 mainloop = None
 
 BLUEZ_SERVICE_NAME = 'org.bluez'
 GATT_MANAGER_IFACE = 'org.bluez.GattManager1'
-DBUS_OM_IFACE =      'org.freedesktop.DBus.ObjectManager'
-DBUS_PROP_IFACE =    'org.freedesktop.DBus.Properties'
+DBUS_OM_IFACE = 'org.freedesktop.DBus.ObjectManager'
+DBUS_PROP_IFACE = 'org.freedesktop.DBus.Properties'
 
 GATT_SERVICE_IFACE = 'org.bluez.GattService1'
-GATT_CHRC_IFACE =    'org.bluez.GattCharacteristic1'
-GATT_DESC_IFACE =    'org.bluez.GattDescriptor1'
+GATT_CHRC_IFACE = 'org.bluez.GattCharacteristic1'
+GATT_DESC_IFACE = 'org.bluez.GattDescriptor1'
+
 
 class InvalidArgsException(dbus.exceptions.DBusException):
     _dbus_error_name = 'org.freedesktop.DBus.Error.InvalidArgs'
 
+
 class NotSupportedException(dbus.exceptions.DBusException):
     _dbus_error_name = 'org.bluez.Error.NotSupported'
+
 
 class NotPermittedException(dbus.exceptions.DBusException):
     _dbus_error_name = 'org.bluez.Error.NotPermitted'
 
+
 class InvalidValueLengthException(dbus.exceptions.DBusException):
     _dbus_error_name = 'org.bluez.Error.InvalidValueLength'
+
 
 class FailedException(dbus.exceptions.DBusException):
     _dbus_error_name = 'org.bluez.Error.Failed'
@@ -86,13 +66,13 @@ class Service(dbus.service.Object):
 
     def get_properties(self):
         return {
-                GATT_SERVICE_IFACE: {
-                        'UUID': self.uuid,
-                        'Primary': self.primary,
-                        'Characteristics': dbus.Array(
-                                self.get_characteristic_paths(),
-                                signature='o')
-                }
+            GATT_SERVICE_IFACE: {
+                'UUID': self.uuid,
+                'Primary': self.primary,
+                'Characteristics': dbus.Array(
+                    self.get_characteristic_paths(),
+                    signature='o')
+            }
         }
 
     def get_path(self):
@@ -122,7 +102,7 @@ class Service(dbus.service.Object):
     @dbus.service.method(DBUS_OM_IFACE, out_signature='a{oa{sa{sv}}}')
     def GetManagedObjects(self):
         response = {}
-        print('GetManagedObjects')
+        rospy.loginfo('GetManagedObjects')
 
         response[self.get_path()] = self.get_properties()
         chrcs = self.get_characteristics()
@@ -136,6 +116,7 @@ class Service(dbus.service.Object):
 
 
 class Characteristic(dbus.service.Object):
+
     def __init__(self, bus, index, uuid, flags, service):
         self.path = service.path + '/char' + str(index)
         self.bus = bus
@@ -147,14 +128,14 @@ class Characteristic(dbus.service.Object):
 
     def get_properties(self):
         return {
-                GATT_CHRC_IFACE: {
-                        'Service': self.service.get_path(),
-                        'UUID': self.uuid,
-                        'Flags': self.flags,
-                        'Descriptors': dbus.Array(
-                                self.get_descriptor_paths(),
-                                signature='o')
-                }
+            GATT_CHRC_IFACE: {
+                'Service': self.service.get_path(),
+                'UUID': self.uuid,
+                'Flags': self.flags,
+                'Descriptors': dbus.Array(
+                    self.get_descriptor_paths(),
+                    signature='o')
+            }
         }
 
     def get_path(self):
@@ -183,22 +164,22 @@ class Characteristic(dbus.service.Object):
 
     @dbus.service.method(GATT_CHRC_IFACE, out_signature='ay')
     def ReadValue(self):
-        print('Default ReadValue called, returning error')
+        rospy.loginfo('Default ReadValue called, returning error')
         raise NotSupportedException()
 
     @dbus.service.method(GATT_CHRC_IFACE, in_signature='ay')
     def WriteValue(self, value):
-        print('Default WriteValue called, returning error')
+        rospy.loginfo('Default WriteValue called, returning error')
         raise NotSupportedException()
 
     @dbus.service.method(GATT_CHRC_IFACE)
     def StartNotify(self):
-        print('Default StartNotify called, returning error')
+        rospy.loginfo('Default StartNotify called, returning error')
         raise NotSupportedException()
 
     @dbus.service.method(GATT_CHRC_IFACE)
     def StopNotify(self):
-        print('Default StopNotify called, returning error')
+        rospy.loginfo('Default StopNotify called, returning error')
         raise NotSupportedException()
 
     @dbus.service.signal(DBUS_PROP_IFACE,
@@ -208,6 +189,7 @@ class Characteristic(dbus.service.Object):
 
 
 class Descriptor(dbus.service.Object):
+
     def __init__(self, bus, index, uuid, flags, characteristic):
         self.path = characteristic.path + '/desc' + str(index)
         self.bus = bus
@@ -218,11 +200,11 @@ class Descriptor(dbus.service.Object):
 
     def get_properties(self):
         return {
-                GATT_DESC_IFACE: {
-                        'Characteristic': self.chrc.get_path(),
-                        'UUID': self.uuid,
-                        'Flags': self.flags,
-                }
+            GATT_DESC_IFACE: {
+                'Characteristic': self.chrc.get_path(),
+                'UUID': self.uuid,
+                'Flags': self.flags,
+            }
         }
 
     def get_path(self):
@@ -239,75 +221,83 @@ class Descriptor(dbus.service.Object):
 
     @dbus.service.method(GATT_DESC_IFACE, out_signature='ay')
     def ReadValue(self):
-        print ('Default ReadValue called, returning error')
+        rospy.loginfo('Default ReadValue called, returning error')
         raise NotSupportedException()
 
     @dbus.service.method(GATT_DESC_IFACE, in_signature='ay')
     def WriteValue(self, value):
-        print('Default WriteValue called, returning error')
+        rospy.loginfo('Default WriteValue called, returning error')
         raise NotSupportedException()
 
-class TestService(Service):
 
-    TEST_SVC_UUID = 'E1F40469-CFE1-43C1-838D-DDBC9DAFDDE6'
-    CH_UUID =  'F90E9CFE-7E05-44A5-9D75-F13644D6F645'
+class SerialService(Service):
+
+    SERIAL_SVC_UUID = 'E1F40469-CFE1-43C1-838D-DDBC9DAFDDE6'
+    CH_UUID = 'F90E9CFE-7E05-44A5-9D75-F13644D6F645'
     CH_UUID2 = 'CF70EE7F-2A26-4F62-931F-9087AB12552C'
 
     def __init__(self, bus, index):
-        Service.__init__(self, bus, index, self.TEST_SVC_UUID, True)
-        self.add_characteristic(TestCharacteristic(bus, 1, self, self.CH_UUID2,0,1,['read']))
-        self.add_characteristic(TestCharacteristic(bus, 2, self, self.CH_UUID,0,1,['read', 'write','writable-auxiliaries']))
-        self.add_characteristic(TestCharacteristic(bus, 3, self, self.CH_UUIDd,0,1,['read', 'write']))
+        Service.__init__(self, bus, index, self.SERIAL_SVC_UUID, True)
+        self.add_characteristic(SerialCharacteristic(
+            bus, 1, self, self.CH_UUID2, 0, 1, ['read']))
+        self.add_characteristic(SerialCharacteristic(bus, 2, self, self.CH_UUID, 0, 1, [
+                                'read', 'write', 'writable-auxiliaries']))
 
-class TestCharacteristic(Characteristic):
 
-    def __init__(self, bus, index, service,TEST_CHRC_UUID,flag,flag2,p):
+class SerialCharacteristic(Characteristic):
+
+    def __init__(self, bus, index, service, SERIAL_CHRC_UUID, flag, flag2, p):
         Characteristic.__init__(
-                self, bus, index,
-                TEST_CHRC_UUID,
-                p,
-                service)
+            self, bus, index,
+            SERIAL_CHRC_UUID,
+            p,
+            service)
         self.value = []
         if flag == 1:
-                self.add_descriptor(TestDescriptor(bus, 0, self))
+            self.add_descriptor(SerialDescriptor(bus, 0, self))
         if flag2 == 1:
-                self.add_descriptor(CharacteristicUserDescriptionDescriptor(bus, 1, self))
+            self.add_descriptor(
+                CharacteristicUserDescriptionDescriptor(bus, 1, self))
 
     def ReadValue(self):
-        print('TestCharacteristic Read: ' + repr(self.value))
-        print('TestCharacteristic Read value: ' + str(self.value))
+        rospy.loginfo('SerialCharacteristic Read: ' + repr(self.value))
+        rospy.loginfo('SerialCharacteristic Read value: ' + str(self.value))
         return self.value
 
-    def WriteValue(self, value):        
+    def WriteValue(self, value):
         self.value = value
         s = "".join(chr(b) for b in value)
-        print s
-        rospy.loginfo("controlNode %s", s)
-        
-        if ('#' in s or '$' in s or '<' in s or '>' in s):
-            LEDon = String()
-            LEDon.data = "gpio,w,act"
-            send(LEDon)
+        rospy.loginfo("PUBLISH: %s", s)
+
+        eyes = Eyes()
+        eyes.left.loop = False
+        eyes.right.loop = False
+        eyes.left.pattern = [0, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40,
+                            0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95, 1, 0.95, 0.90, 0.85, 0.80, 0.75, 0.70, 0.65, 0.60, 0.55, 0.50, 0.45, 0.40, 0.35, 0.30, 0.25, 0.20, 0.15, 0.10, 0.05, 0]
+        eyes.right.pattern = [0, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40,
+                             0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95, 1, 0.95, 0.90, 0.85, 0.80, 0.75, 0.70, 0.65, 0.60, 0.55, 0.50, 0.45, 0.40, 0.35, 0.30, 0.25, 0.20, 0.15, 0.10, 0.05, 0]
+        eyes_topic.publish(eyes)
 
         message = String()
-        message.data = "serial,w," + s
-        send(message)
+        message.data = s
+        to_rs485.publish(message)
 
     def StartNotify(self):
-        print('callback:StartNotify')
+        rospy.loginfo('callback:StartNotify')
 
-class TestDescriptor(Descriptor):
+
+class SerialDescriptor(Descriptor):
 
     def __init__(self, bus, index, characteristic):
         Descriptor.__init__(
-                self, bus, index,
-                self.TEST_DESC_UUID,
-                ['read', 'write'],
-                characteristic)
+            self, bus, index,
+            self.TEST_DESC_UUID,
+            ['read', 'write'],
+            characteristic)
 
     def ReadValue(self):
         return [
-                dbus.Byte('T'), dbus.Byte('e'), dbus.Byte('s'), dbus.Byte('t')
+            dbus.Byte('T'), dbus.Byte('e'), dbus.Byte('s'), dbus.Byte('t')
         ]
 
 
@@ -319,10 +309,10 @@ class CharacteristicUserDescriptionDescriptor(Descriptor):
         self.value = array.array('B', 'TX Data')
         self.value = self.value.tolist()
         Descriptor.__init__(
-                self, bus, index,
-                self.CUD_UUID,
-                ['read', 'write'],
-                characteristic)
+            self, bus, index,
+            self.CUD_UUID,
+            ['read', 'write'],
+            characteristic)
 
     def ReadValue(self):
         return self.value
@@ -332,39 +322,50 @@ class CharacteristicUserDescriptionDescriptor(Descriptor):
             raise NotPermittedException()
         self.value = value
 
-def property_changed(interface, changed, invalidated, path):
-        iface = interface[interface.rfind(".") + 1:]
-        for name, value in changed.iteritems():
-                val = str(value)
-                if name == 'Connected':
-                        if val == "1":
-                                print("ON")
-                                message = String()
-                                message.data = "gpio,w,on"
-                                send(message)
-                        elif val == "0":
-                                print("OFF")
-                                message = String()
-                                message.data = "gpio,w,off"
-                                send(message)
-                                advertise()
 
-                        else:
-                                pass
-                elif name == 'Alias' or name == 'Name':
-                    print("ON")
-                    message = String()
-                    message.data = "gpio,w,on"
-                    send(message)
-                else:
-                        pass
+def property_changed(interface, changed, invalidated, path):
+    iface = interface[interface.rfind(".") + 1:]
+    for name, value in changed.iteritems():
+        val = str(value)
+        if name == 'Connected':
+            if val == "1":
+                rospy.loginfo("ON")
+                eyes = Eyes()
+                eyes.left.loop = False
+                eyes.right.loop = False
+                eyes.left.pattern = [1]
+                eyes.right.pattern = [1]
+                eyes_topic.publish(eyes)
+            elif val == "0":
+                rospy.loginfo("OFF")
+                eyes = Eyes()
+                eyes.left.loop = False
+                eyes.right.loop = False
+                eyes.left.pattern = [0]
+                eyes.right.pattern = [0]
+                eyes_topic.publish(eyes)
+                advertise()
+
+            else:
+                pass
+        elif name == 'Alias' or name == 'Name':
+            rospy.loginfo("ON")
+            eyes = Eyes()
+            eyes.left.loop = False
+            eyes.right.loop = False
+            eyes.left.pattern = [1]
+            eyes.right.pattern = [1]
+            eyes_topic.publish(eyes)
+        else:
+            pass
+
 
 def register_service_cb():
-    print('GATT service registered')
+    rospy.loginfo('GATT service registered')
 
 
 def register_service_error_cb(error):
-    print('Failed to register service: ' + str(error))
+    rospy.loginfo('Failed to register service: ' + str(error))
     mainloop.quit()
 
 
@@ -379,29 +380,30 @@ def find_adapter(bus):
 
     return None
 
-def send(message):
-    pub.publish(message)
 
 def prepare_ble_cmd():
     pass
 
+
 def advertise():
-    print('hciup')
-    hci_on = subprocess.Popen(['hciconfig','hci0','up'], stdout=subprocess.PIPE,)
+    rospy.loginfo('hciup')
+    subprocess.call(['hciconfig', 'hci0', 'up'])
 
-    end_of_pipe = hci_on.stdout
-    time.sleep(0.1)
-    print('hcitool')
-    hcitool_cmd2 = subprocess.Popen(['hcitool', '-i', 'hci0', 'cmd', '0x08', '0x0006', '20', '00', '20', '00','00', '00', '00', '00', '00', '00', '00', '00', '00', '07','00'], stdout=subprocess.PIPE,)
+    rospy.loginfo('hcitool')
+    subprocess.call(['hcitool', '-i', 'hci0', 'cmd', '0x08', '0x0006', '20', '00', '20',
+                                     '00', '00', '00', '00', '00', '00', '00', '00', '00', '00', '07', '00'])
 
-    end_of_pipe = hcitool_cmd2.stdout
-    hcitool_cmd = subprocess.Popen(['hcitool','-i','hci0','cmd','0x08','0x0008','15','02','01','06','11','07','e6','dd','af','9d','bc','dd','8d','83','c1','43','e1','cf','69','04','f4','e1'], stdout=subprocess.PIPE,)
+    subprocess.call(['hcitool', '-i', 'hci0', 'cmd', '0x08', '0x0008', '15', '02', '01', '06', '11', '07', 'e6',
+                    'dd', 'af', '9d', 'bc', 'dd', '8d', '83', 'c1', '43', 'e1', 'cf', '69', '04', 'f4', 'e1'])
 
-    end_of_pipe = hcitool_cmd.stdout
-    hcitool_cmd3 = subprocess.Popen(['hcitool', '-i', 'hci0', 'cmd', '0x08', '0x000a' ,'01'],stdout=subprocess.PIPE,)
-    end_of_pipe = hcitool_cmd3.stdout
+    subprocess.call(['hcitool', '-i', 'hci0', 'cmd', '0x08', '0x000a', '01'])
+
 
 def main():
+    # restart bluetoothd
+    subprocess.call(['killall', 'bluetoothd'])
+    subprocess.Popen(['bluetoothd', '-nE'])
+
     global mainloop
     dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
 
@@ -409,37 +411,43 @@ def main():
 
     adapter = find_adapter(bus)
     if not adapter:
-        print('GattManager1 interface not found')
+        rospy.loginfo('GattManager1 interface not found')
         return
 
     service_manager = dbus.Interface(
-            bus.get_object(BLUEZ_SERVICE_NAME, adapter),
-            GATT_MANAGER_IFACE)
+        bus.get_object(BLUEZ_SERVICE_NAME, adapter),
+        GATT_MANAGER_IFACE)
 
-    test_service = TestService(bus,0)
+    serial_service = SerialService(bus, 0)
 
     mainloop = gobject.MainLoop(is_running=True)
 
-    bus.add_signal_receiver(property_changed, bus_name="org.bluez",
-                        dbus_interface="org.freedesktop.DBus.Properties",
-                        signal_name="PropertiesChanged",
-                        path_keyword="path")
+    bus.add_signal_receiver(property_changed,
+                            bus_name="org.bluez",
+                            dbus_interface="org.freedesktop.DBus.Properties",
+                            signal_name="PropertiesChanged",
+                            path_keyword="path")
 
-    service_manager.RegisterService(test_service.get_path(), {}, reply_handler=register_service_cb, error_handler=register_service_error_cb)
+    service_manager.RegisterService(serial_service.get_path(),
+                                    {},
+                                    reply_handler=register_service_cb,
+                                    error_handler=register_service_error_cb)
     advertise()
     advertise()
+
     try:
-        print "mainloop.run!"
+        rospy.loginfo("mainloop.run!")
         mainloop.run()
 
     except (KeyboardInterrupt, SystemExit):
         mainloop.quit()
-        print "mainloop.quit!"
+        rospy.loginfo("mainloop.quit!")
+
 
 def mybleNode_shutdown():
     global mainloop
     mainloop.quit()
-    print "shutdown now!"
+    rospy.loginfo("shutdown now!")
 
 rospy.on_shutdown(mybleNode_shutdown)
 

@@ -1,7 +1,6 @@
 <launch>
-	<node pkg="plen" name="ControlNode" type="controlNode.py"/>
-	<node pkg="plen" name="gpioNode" type="gpioNode.py"/>
-	<node pkg="plen" name="serialNode" type="serialNode.py"/>
-	<node pkg="plen" name="i2cNode" type="i2cNode.py"/>
-	<node pkg="plen" name="bleNode" type="bleNode.py"/>
+	<node pkg="plen" name="eyes_node" type="eyes_node.py"/>
+	<node pkg="plen" name="serial_node" type="serial_node.py"/>
+	<node pkg="plen" name="six_axis_node" type="six_axis_node.py"/>
+	<node pkg="plen" name="ble_node" type="ble_node.py"/>
 </launch>
