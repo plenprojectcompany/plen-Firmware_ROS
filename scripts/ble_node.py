@@ -393,8 +393,10 @@ def prepare_ble_cmd():
 
 
 def advertise():
-    rospy.loginfo('hciup')
-    subprocess.call(['hciconfig', 'hci0', 'up'])
+    # start hci0
+    while subprocess.check_output(['hciconfig', 'hci0']).find("UP") == -1:
+        rospy.loginfo('hciup')
+        subprocess.call(['hciconfig', 'hci0', 'up'])
 
     rospy.loginfo('hcitool')
     subprocess.call(['hcitool', '-i', 'hci0', 'cmd', '0x08', '0x0006', '20', '00', '20',
